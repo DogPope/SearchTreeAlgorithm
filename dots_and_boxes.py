@@ -8,317 +8,327 @@ Original file is located at
 
 # Dots and Boxes in Python
 Dots and Boxes is a simple Strategy game developed in the 1880s in France.
-This program will attempt to recreate it in Python and apply the Decision Tree algorithm to the results, with a limited ply-depth to ensure that the program does not blow up Google Colab.
+This program will attempt to recreate it in Python and apply a Search Tree algorithm to the results.
 
 ## Dots and Boxes logic
-The game dots and boxes is a game that involves conquering territory from the opposing player. When all four edges are placed around a box, the box is considered "Won" on behalf of the entity that took the box.
+The game Dots and Boxes is a territory conquering game, focusing on capturing boxes that are not owned by any entity. A single box is considered owned when the playing character places the final line around it. This increments that players score, and the highest score wins.
 
-A box is only considered "Won" when the final edge is filled in. The entity that filled in the final edge wins the box in question.
+The copy_game_state method copies the state outside of the algorithm using the games variables and preserves the current game state. Deep copy is used because the default shallow copy would modify the board.
+"""
 
-There is a line of logic that would allow for a minimum of a draw every time, but looks too hard to implement. This was decided against. Instead, the computer can choose between moves that assess the box, and neighbouring boxes directly. If a box has one available placement, it takes it, and tries not to place a line if the box has two sides filled, as this would make it too easy for the opposing player.
+import copy
+
+class DotsAndBoxes:
+    def __init__(self, rows=3, cols=3):
+        self.rows = rows
+        self.cols = cols
+        self.h_edges = [[False for _ in range(cols)] for _ in range(rows + 1)]
+        self.v_edges = [[False for _ in range(cols + 1)] for _ in range(rows)]
+        self.boxes = [[0 for _ in range(cols)] for _ in range(rows)]
+        self.current_player = 1
+        self.scores = {1: 0, 2: 0}
+
+    def display_board(self):
+        print("Current Board:")
+
+        for row in range(self.rows + 1):
+            line = ""
+            for col in range(self.cols):
+                line += "*"
+                if self.h_edges[row][col]:
+                    line += "———"
+                else:
+                    line += "   "
+            line += "*"
+            print(line)
+
+            if row < self.rows:
+                line = ""
+                for col in range(self.cols + 1):
+                    if self.v_edges[row][col]:
+                        line += "|"
+                    else:
+                        line += " "
+
+                    if col < self.cols:
+                        box_val = self.boxes[row][col]
+                        if box_val == 0:
+                            line += "   "
+                        else:
+                            line += f" {box_val} "
+                print(line)
+        print(f"Scores - Player: {self.scores[1]}, Computer: {self.scores[2]}")
+        print(f"Player: {self.current_player}")
+
+    def get_possible_moves(self): # Also needed for copying with SearchTreeNode
+        moves = []
+
+        for row in range(self.rows + 1):
+            for col in range(self.cols):
+                if not self.h_edges[row][col]:
+                    moves.append(('h', row, col))
+
+        for row in range(self.rows):
+            for col in range(self.cols + 1):
+                if not self.v_edges[row][col]:
+                    moves.append(('v', row, col))
+
+        return moves
+
+    def is_game_over(self):
+            return len(self.get_possible_moves()) == 0
+
+    def get_winner(self):
+            if self.scores[1] > self.scores[2]:
+                return 1
+            elif self.scores[2] > self.scores[1]:
+                return 2
+            else:
+                return 0
+
+    def list_moves(self):
+            moves = self.get_possible_moves()
+            print(f"\nAvailable moves for Player {self.current_player}:")
+            for i, move in enumerate(moves):
+                edge_type, row, col = move
+                if edge_type == 'h':
+                    print(f"{i}: Horizontal edge at row {row}, col {col}")
+                else:
+                    print(f"{i}: Vertical edge at row {row}, col {col}")
+            return moves
+
+    def get_move(self):
+        moves = self.list_moves()
+        while True:
+            try:
+                choice = input(f"Player {self.current_player}, enter move number (0-{len(moves)-1}): ")
+                choice = int(choice)
+
+                if 0 <= choice < len(moves):
+                    return moves[choice]
+                else:
+                    print(f"Please enter a number between 0 and {len(moves)-1}")
+
+            except ValueError:
+                print("Please enter a valid number")
+                return None
+
+    def is_box_complete(self, box_row, box_col):
+        if box_row < 0 or box_row >= self.rows or box_col < 0 or box_col >= self.cols:
+            return False
+
+        top = self.h_edges[box_row][box_col]
+        bottom = self.h_edges[box_row + 1][box_col]
+        left = self.v_edges[box_row][box_col]
+        right = self.v_edges[box_row][box_col + 1]
+
+        return top and bottom and left and right
+
+    def make_move(self, move):
+        edge_type, row, col = move
+
+        if edge_type == 'h':
+            if self.h_edges[row][col]:
+                return False  # Edge already drawn
+            self.h_edges[row][col] = True
+        else:  # vertical edge
+            if self.v_edges[row][col]:
+                return False  # Edge already drawn
+            self.v_edges[row][col] = True
+
+        boxes_completed = 0
+        boxes_to_check = []
+
+        if edge_type == 'h': # Horizontal edge can complete boxes above and below
+            if row > 0:
+                boxes_to_check.append((row - 1, col))
+            if row < self.rows:
+                boxes_to_check.append((row, col))
+        else:
+            if col > 0:
+                boxes_to_check.append((row, col - 1))
+            if col < self.cols:
+                boxes_to_check.append((row, col))
+
+        for box_row, box_col in boxes_to_check:
+            if (self.boxes[box_row][box_col] == 0 and
+                self.is_box_complete(box_row, box_col)):
+
+                self.boxes[box_row][box_col] = self.current_player
+                self.scores[self.current_player] += 1
+                boxes_completed += 1
+
+        if boxes_completed == 0: # Switch player only if no boxes were completed
+            self.current_player = 2 if self.current_player == 1 else 1
+
+        return boxes_completed
+
+    def get_opponent(self, player=None):
+        return 2 if player == 1 else 1
+
+    def evaluate_position(self):
+        my_score = self.scores[self.current_player]
+        opponent_score = self.scores[self.get_opponent()]
+        return my_score - opponent_score
+
+"""## Search Tree Algorithm
+The search tree algorithm, otherwise known as the Minimax Tree algorithm, is a recursive algorithm that uses the end state of the game to decide on a move to make. The algorithm is guided by a Hueristic function, deciding which move is best.
+
+## Search Tree Node Class
+The SearchTreeNode class below is responsible for creating and manipulating the Search Tree itself. The Search Tree Algorithm here, otherwise known as "Minimax" Tree algorithm, recursively draws all possible combinations of the board. It assigns a value based on the maximum or minimum value available at the time.
+
+<hr>
+
+The problem with using this algorithm is the player changing mechanism of the game itself. The game here adds complexity to the algorithm, as the game continues if a box is completed by the current player. This lead to the algorithm having to be recalled if a move completes a box, hence the  `if boxes_completed` condition within both the algorithm and the heuristic method. This method call ensures that the maximizing or minimizing value is kept consistent. For this reason, it was decided that the algorithm given as a sample would have to be rewritten, as it only handled alternating player inputs, where Dots and Boxes does not. It could very well be the case here that MAX gets two or three depths of the tree in a row.
+
+<hr>
+
+### get_best_move() Hueristic
+The Hueristic function here returns the move that resulted in the highest available score. Or the first move that has the highest score, as this can be multiple moves. The recursive depth here is set to 3, for performance optimisation.
 """
 
 class SearchTreeNode:
-  def __init__(self, game_board, current_player, ply=0, max_depth=3): # Added a maximum depth of 5 to increase performance
-    self.children = []
-    self.value_is_assigned = False
-    self.ply_depth = ply
-    self.current_board = game_board
-    self.move_for = current_player
+    def __init__(self, board_instance): # Initializer had to be inserted to control the games state in this cell.
+        self.game = board_instance
 
-    if self.ply_depth < max_depth and self.current_board.state_of_board() == "U": # Still using Won or Not won to decide state
-      self.generate_children(max_depth)
-    else:
-      player_score, computer_score = self.current_board.count_score()
-      self.value = computer_score - player_score
-      self.value_is_assigned = True
+    def SearchTreeAlgorithm(self, depth, maximizing_player, minimizing_player): # Bool for Maximizing player.
+        if self.game.is_game_over() or depth == 0: # Base Case
+            my_score = self.game.scores[minimizing_player] # Record both parties scores for min and max
+            opponent_score = self.game.scores[self.game.get_opponent(minimizing_player)]
+            return my_score - opponent_score
 
-  def min_max_value(self, max_depth):
-    if self.value_is_assigned:
-      return self.value
-    for child in self.children:
-      child.min_max_value(max_depth)
-    if self.move_for == 2: # Computer Move
-      if not self.children:
-        self.value = -999
-      else:
-        self.value = max(child.value for child in self.children)
-    else:
-      if not self.children:
-        self.value = 999
-      else:
-        self.value = min(child.value for child in self.children)
-    self.value_is_assigned = True
-    return self.value
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in self.game.get_possible_moves():
+                game_copy = copy.deepcopy(self.game)
+                boxes_completed = game_copy.make_move(move)
 
-  def generate_children(self, max_depth):
-    for next_board in self.current_board.all_possible_moves():
-      self.children.append(SearchTreeNode(next_board, 3 - self.move_for, ply = self.ply_depth +1, max_depth = max_depth))
+                new_node = SearchTreeNode(game_copy) # Create a new SearchTreeNode for the copied game state
+                if boxes_completed > 0:
+                    eval_score = new_node.SearchTreeAlgorithm(depth - 1, True, minimizing_player)
+                else:
+                    eval_score = new_node.SearchTreeAlgorithm(depth - 1, False, minimizing_player)
 
-'''Map of the Game board for reference. It's long for easier deciphering of indices.'''
-#      [0,1]     [0,3]     [0,5]
-# [1,0]     [1,2]     [1,4]     [1,6]
-#      [2,1]     [2,3]     [2,5]
-# [3,0]     [3,2]     [3,4]     [3,6]
-#      [4,1]     [4,3]     [4,5]
-class DotsAndBoxes:
-  def __init__(self, newBoard = None, current_player = 1, player_score = 0, computer_score = 0): # Implement Game State for algorithm.
-    self.current_player = current_player # For copying the board, this needs to be reinitialized.
-    self.player_score = player_score
-    self.computer_score = computer_score
-    if newBoard is None:
-      self.game_board = [
-        ["*", " ", "*", " ", "*", " ", "*"],
-        [" ", "0", " ", "0", " ", "0", " "],
-        ["*", " ", "*", " ", "*", " ", "*"],
-        [" ", "0", " ", "0", " ", "0", " "],
-        ["*", " ", "*", " ", "*", " ", "*"]
-      ]
-    else: # Otherwise initialize this game board instance.
-      self.game_board = [row[:] for row in newBoard] # copy
-    self.state = self.state_of_board() # No longer causing a crash
+                max_eval = max(max_eval, eval_score)
+            return max_eval
+        else: # Minimizing player
+            min_eval = float('inf')
+            for move in self.game.get_possible_moves():
+                game_copy = copy.deepcopy(self.game)
+                boxes_completed = game_copy.make_move(move)
 
-  def display_board(self):
-    for row in self.game_board:
-      print(''.join(row))
+                new_node = SearchTreeNode(game_copy)
+                if boxes_completed > 0: # Needs to be recalled if a box is completed.
+                    eval_score = new_node.SearchTreeAlgorithm(depth - 1, False, minimizing_player)
+                else:
+                    eval_score = new_node.SearchTreeAlgorithm(depth - 1, True, minimizing_player)
+                min_eval = min(min_eval, eval_score)
+            return min_eval
 
-  def state_of_board(self): # All that needed to be assessed here is whether the game is won or not.
-    if self.return_available_moves():
-      return "U" # Unfinished
-    else:
-      return "D"
+    #Heuristic method to assess the values in each depth level of the tree. depth=3
+    def get_best_move(self, depth=3): # Search for the best move using Copies to SIMULATE what would happen rather than modifying the actual game board.
+        if not self.game.get_possible_moves():
+            return None
 
-  def return_available_moves(self):
-    remaining_moves = []
-    for row_index in range(len(self.game_board)):
-      for col_index in range(len(self.game_board[row_index])):
-        if self.game_board[row_index][col_index] == " ":
-          remaining_moves.append((row_index, col_index))
-    return remaining_moves
+        best_move = None
+        best_score = float('-inf') # Initialize to minimum value
 
-  def all_possible_moves(self): # Updates the board, return available moves.
-    remaining_moves = self.return_available_moves()
-    all_moves = []
-    for move in remaining_moves:
-      new_board = DotsAndBoxes( # Create board with move
-          [row[:] for row in self.game_board],
-          self.current_player,
-          self.player_score,
-          self.computer_score
-      )
-      new_board.add_line(move[0], move[1])
-      boxes_completed = new_board.check_if_box_completed(move[0], move[1])
-      if boxes_completed == 0: # Logic to change player if box is complete
-        new_board.change_player()
-      all_moves.append(new_board)
-    return all_moves
+        print(f"Computer considering {len(self.game.get_possible_moves())} possible moves at depth {depth}")
 
-  def check_if_box_completed(self, row, col): # Checks if placing a line completes more than one box. Checks run after every placed line.
-    boxes_completed = 0
-    if row % 2 == 0:# Checks horizontal line. Block handles box above.
-      if row > 0:
-        r, c = row - 1, col
-        if self.game_board[r][c] == "0" and self.count_lines_around_box(r, c) == 4:
-          self.game_board[r][c] = str(self.current_player)
-          if self.current_player == 1:
-            self.player_score += 1
-          else:
-            self.computer_score += 1
-          boxes_completed += 1
-      if row < len(self.game_board) - 1: # Block handles box below.
-        r, c = row + 1, col
-        if self.game_board[r][c] == "0" and self.count_lines_around_box(r, c) == 4:
-          self.game_board[r][c] = str(self.current_player)
-          if self.current_player == 1:
-            self.player_score += 1
-          else:
-            self.computer_score += 1
-          boxes_completed += 1
+        for i, move in enumerate(self.game.get_possible_moves()):
+            game_copy = copy.deepcopy(self.game)
+            boxes_completed = game_copy.make_move(move)
 
-    else: # The following block handles Vertical box checks
-      if col > 0: # Check left box
-        r, c = row, col - 1
-        if self.game_board[r][c] == "0" and self.count_lines_around_box(r, c) == 4:
-          self.game_board[r][c] = str(self.current_player)
-          if self.current_player == 1:
-            self.player_score += 1
-          else:
-            self.computer_score += 1
-          boxes_completed += 1
-      if col < len(self.game_board[row]) - 1: # Check right box
-        r, c = row, col + 1
-        if self.game_board[r][c] == "0" and self.count_lines_around_box(r, c) == 4:
-          self.game_board[r][c] = str(self.current_player)
-          if self.current_player == 1:
-            self.player_score += 1
-          else:
-            self.computer_score += 1
-          boxes_completed += 1
-    return boxes_completed
+            new_node = SearchTreeNode(game_copy) # Create a new SearchTreeNode for the copied game state
 
-  def count_lines_around_box(self, row, col): # Refactored to return numbers
-    if self.game_board[row][col] not in ['0', '1', '2']:
-      return 0
-    count = 0
-    if row > 0 and self.game_board[row - 1][col] == '-': # Top
-      count += 1
-    if row < len(self.game_board) - 1 and self.game_board[row + 1][col] == '-':
-      count += 1
-    if row > 0 and self.game_board[row - 1][col] == '-': # Check Left
-      count += 1
-    if col < len(self.game_board[row]) - 1 and self.game_board[row][col + 1] == "-": # Check right
-      count += 1
-    return count
+            if boxes_completed > 0: # Needs to be recalled if a box is completed.
+                score = new_node.SearchTreeAlgorithm(depth - 1, True, self.game.current_player)
+            else:
+                score = new_node.SearchTreeAlgorithm(depth - 1, False, self.game.current_player)
 
-  def count_score(self):
-    self.player_score = sum(row.count("1") for row in self.game_board)
-    self.computer_score = sum(row.count("2") for row in self.game_board)
-    return self.player_score, self.computer_score
+            print(f"Move {i}: {move} -> Score: {score}")
 
-  def change_player(self):
-    self.current_player = 3 - self.current_player
+            if score > best_score:
+                best_score = score
+                best_move = move
 
-  def player_move(self):
-    remaining_moves = self.return_available_moves()
-    player_score, computer_score = self.count_score()
-    print(f"Player Score: {player_score}")
-    print(f"Computer Score: {computer_score}")
-    print(f"Remaining Moves: {remaining_moves}")
-    row = int(input("Please enter a row for the move (0-4): "))
-    col = int(input("Please enter a column for the move (0-4): "))
-    if (row, col) not in remaining_moves:
-      print("Invalid move. Please try again.")
-      return False
-    self.add_line(row, col)
-    boxes_completed = self.check_if_box_completed(row, col)
-    if boxes_completed == 0:
-      self.change_player()
-    else:
-      print(f"Box complete! Take another turn.{boxes_completed}")
-    return True
+        print(f"Best move: {best_move} with score: {best_score}")
+        return best_move # Returns move with highest possible score.
 
-  def find_completable_box(self):
-    for row in range(len(self.game_board)):
-      for col in range(len(self.game_board[row])):
-        if self.game_board[row][col] == "0":
-          if self.count_lines_around_box(row, col) == 3:
-            if row > 0 and self.game_board[row - 1][col] == " ":
-              return row - 1, col
-            if row < len(self.game_board) - 1 and self.game_board[row + 1][col] == " ":
-              return row + 1, col
-            if col > 0 and self.game_board[row][col - 1] == " ":
-              return row, col - 1
-            if col < len(self.game_board[row]) - 1 and self.game_board[row][col + 1] == " ":
-              return row, col + 1
-    return None
+"""## Play game
+This method brings the previous cells together, and allows the programmer to set the AI depth of the program.
+"""
 
-  def add_line(self, row, col):
-    self.game_board[row][col] = "-"
+def play_game(player=1, ai_depth=3):
+    game = DotsAndBoxes()
+    ai = SearchTreeNode(game)
 
-  def computer_move(self): # It's this. Definitely this.
-    move = self.find_completable_box() # First Priority.
-    if not move:
-      move = self.find_safe_move() # Second Priority.
+    print(f"Welcome to Dots and Boxes vs Computer!")
+    print(f"AI search depth: {ai_depth}")
 
-    if not move:
-      search_tree = SearchTreeNode(self, self.current_player, max_depth = 2)
-      search_tree.min_max_value(2)
-      best_value = float("-inf")
-      best_board = None
-      for child in search_tree.children:
-        if child.value > best_value:
-          best_value = child.value
-          best_board = child.current_board
-      if best_board:
-        for row in range(len(self.game_board)):
-          for col in range(len(self.game_board[row])):
-            if(self.game_board[row][col] == " " and
-               best_board.game_board[row][col] == "-"):
-              move = (row, col)
-      if not move:
-        moves = self.return_available_moves()
-        if moves:
-          move = moves[0]
+    game.display_board()
+
+    while not game.is_game_over():
+        if game.current_player == player:
+            move = game.get_move()
+            if move is None:
+                break
         else:
-          return
-    print(f"Computer made a move at: {move}")
-    self.add_line(move[0], move[1])
-    boxes_completed = self.check_if_box_completed(move[0], move[1])
-    if boxes_completed > 0:
-      self.computer_move()
-    else:
-      self.change_player()
+            move = ai.get_best_move(ai_depth)
+            print(f"AI plays: {move}")
 
-  def find_safe_move(self): # Do not make a move that puts three sides on a box. It gives away the box to the next player. That's all this does.
-    safe_moves = []
-    for move in self.return_available_moves():
-      gives_away_box = False
-      test_board = [row[:] for row in self.game_board]
-      test_board[move[0]][move[1]] = "-"
-      box_positions = []
-      if move[0] % 2 == 0:
-        if move[0] > 0:
-          box_positions.append((move[0] - 1, move[1]))
-        if move[0] < len(test_board) - 1:
-          box_positions.append((move[0] + 1, move[1]))
-      else:
-        if move[1] > 0:
-          box_positions.append((move[0], move[1] - 1))
-        if move[1] < len(test_board[move[0]]) - 1:
-          box_positions.append((move[0], move[1] + 1))
-      for box_row, box_col in box_positions:
-        if (0 <= box_row < len(test_board) and
-            0 < box_col < len(test_board[box_row]) and
-            test_board[box_row][box_col] == 0):
-          line_count = 0
-          if box_row > 0 and (test_board[box_row-1][box_col] == "-"):
-            line_count += 1
-          if box_row < len(test_board)-1 and (test_board[box_row+1][box_col] == "-"):
-            line_count += 1
-          if box_col > 0 and (test_board[box_row][box_col-1] == "-"):
-            line_count += 1
-          if box_col < len(test_board[box_row])-1 and (test_board[box_row][box_col+1] == "-"):
-            line_count += 1
+        boxes_completed = game.make_move(move)
 
-          if line_count == 3:
-            gives_away_box = True
-      if not gives_away_box:
-        safe_moves.append(move)
-    if safe_moves:
-      return safe_moves[0] # Select the first available move from moves.
-    else:
-      return None
+        if boxes_completed > 0:
+            player_name = "You" if game.current_player == player else "Computer"
+            print(f"{player_name} completed {boxes_completed} box(es) and gets another turn!")
 
-  def play_game(self): # Not where the error is happening.
-    self.display_board()
-    while self.state_of_board() == "U":
-      if self.current_player == 1:
-        valid_move = self.player_move()
-        while not valid_move:
-          valid_move = self.player_move()
-      else:
-        print("Computer made a move.")
-        self.computer_move()
-      self.display_board()
-      player_score, computer_score = self.count_score()
-      print(f"Current Score - Player:{player_score}, Computer: {computer_score}")
-    print(f"Final Score - Player:{player_score}, Computer: {computer_score}")
-    if player_score > computer_score:
-      print("Congratulations! You won!")
-    elif player_score < computer_score:
-      print("Computer wins!")
-    else:
-      print("It's a draw!")
+        game.display_board()
 
-cb = DotsAndBoxes()
+    if game.is_game_over():
+        winner = game.get_winner()
+        if winner == 0:
+            print("It's a tie!")
+        elif winner == player:
+            print("Congratulations! You won!")
+        else:
+            print("Computer wins! Oh well.")
 
-game = DotsAndBoxes()
-for g in game.all_possible_moves():
-  g.display_board()
+    return winner
 
+play_game(player=1, ai_depth=3)
+
+"""### Testing
+Testing that all moves are considered.
+"""
+
+cb = DotsAndBoxes(3,3)
 cb.display_board()
+cb.get_possible_moves()
+test_node = SearchTreeNode(cb)
+test_node.get_best_move()
 
-st = SearchTreeNode(cb,1)
+"""## Testing an Ongoing Game"""
 
-game = DotsAndBoxes()
-game.play_game()
+mid_game = DotsAndBoxes(3, 3) # Create a new game board
+mid_game.h_edges[0][0] = True # Manually add edges
+mid_game.h_edges[0][1] = True
+mid_game.h_edges[1][0] = True
+mid_game.h_edges[2][0] = True
+mid_game.v_edges[2][0] = True #
+mid_game.v_edges[1][0] = True
+mid_game.v_edges[0][1] = True
+mid_game.v_edges[1][1] = True
+mid_game.v_edges[0][1] = True
+mid_game.scores[1] += 1
+mid_game.current_player = 2 # Computer move
+mid_game.display_board()
+node = SearchTreeNode(mid_game)
+best_move = node.get_best_move(depth=3)
+print(f"AI's best move from this mid-game state: {best_move}")
+
+"""## Results and Conclusions
+In the cell above, the algorithm is called on a board that has a move that would complete a box. The move is v,0,0 which is successfully chosen when called.
+
+The algorithm always chose a good move, and this always resulted in the AI winning over the player in a 3x3 game. In testing, I was not able to beat it. Following the perfect strategy, only a draw could be acheived against it.
+"""
